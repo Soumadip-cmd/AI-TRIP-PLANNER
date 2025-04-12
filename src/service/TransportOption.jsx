@@ -429,12 +429,13 @@
 
 
 
-import React, { useState, useEffect } from 'react'
-import { Button } from '@/components/ui/button'
+import React, { useState, useEffect } from 'react';
+import { Button } from '@/components/ui/button';
 import { FaPlane, FaTrain, FaBus, FaInfoCircle, FaExchangeAlt, FaClock, FaMoneyBillWave, FaRegClock, FaMapMarkerAlt, FaRocket, FaStar } from "react-icons/fa";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { AiOutlineLoading3Quarters } from "react-icons/ai";
 import { chatSession } from '@/service/AIModel';
+import Top3Recommendations from './Top3Recommendations';
 
 function TransportationOptions({ trip }) {
   const [transportData, setTransportData] = useState(null);
@@ -559,10 +560,27 @@ For routes like Kolkata to Darjeeling, suggest flights to the nearest airport (l
       ...(data.buses || []).map(item => ({...item, type: 'bus'}))
     ];
     
+    // Skip empty dataset
+    if (allOptions.length === 0) {
+      setTopRecommendations([]);
+      return;
+    }
+    
     // Sort based on a combination of factors (duration, price)
     const sortedOptions = allOptions.sort((a, b) => {
       // Extract numeric duration in minutes for comparison
       const getDurationInMinutes = (durationStr) => {
+        if (!durationStr || typeof durationStr !== 'string') return 9999;
+        
+        // Handle ranges like "4-6 hours"
+        if (durationStr.includes('-') && durationStr.includes('hour')) {
+          const rangeMatch = durationStr.match(/(\d+)[^\d]+(\d+)/);
+          if (rangeMatch) {
+            // Take the average of the range
+            return ((parseInt(rangeMatch[1]) + parseInt(rangeMatch[2])) / 2) * 60;
+          }
+        }
+        
         const hours = parseInt(durationStr.match(/(\d+)h/)?.[1] || 0);
         const minutes = parseInt(durationStr.match(/(\d+)m/)?.[1] || 0);
         return hours * 60 + minutes;
@@ -570,6 +588,8 @@ For routes like Kolkata to Darjeeling, suggest flights to the nearest airport (l
       
       // Extract average price for comparison
       const getAveragePrice = (priceStr) => {
+        if (!priceStr || typeof priceStr !== 'string') return 9999999;
+        
         const prices = priceStr.replace('₹', '').replace(/,/g, '').match(/\d+/g);
         if (!prices || prices.length === 0) return 9999999;
         if (prices.length === 1) return parseInt(prices[0]);
@@ -592,9 +612,17 @@ For routes like Kolkata to Darjeeling, suggest flights to the nearest airport (l
     setTopRecommendations(sortedOptions.slice(0, 3));
   };
 
-  // Extract exact arrival time relative to the current time
+  // Calculate exact arrival time relative to the current time
   const calculateExactArrivalTime = (departure, duration) => {
     try {
+      // Check if departure or duration contains words like "Various"
+      if (!departure || !duration || 
+          departure.toLowerCase().includes('various') || 
+          typeof departure !== 'string' ||
+          typeof duration !== 'string') {
+        return "Based on departure";
+      }
+      
       // Function to convert 12-hour time format to 24-hour
       const convertTo24Hour = (timeStr) => {
         if (!timeStr) return null;
@@ -613,6 +641,16 @@ For routes like Kolkata to Darjeeling, suggest flights to the nearest airport (l
       
       // Function to extract duration in hours and minutes
       const extractDuration = (durationStr) => {
+        // For ranges like "4-6 hours", take the average
+        if (durationStr.includes('-')) {
+          const rangeMatch = durationStr.match(/(\d+)[^\d]+(\d+)/);
+          if (rangeMatch) {
+            const start = parseInt(rangeMatch[1]);
+            const end = parseInt(rangeMatch[2]);
+            return { hours: Math.round((start + end) / 2), minutes: 0 };
+          }
+        }
+        
         const hoursMatch = durationStr.match(/(\d+)h/);
         const minutesMatch = durationStr.match(/(\d+)m/);
         
@@ -624,7 +662,7 @@ For routes like Kolkata to Darjeeling, suggest flights to the nearest airport (l
       
       // Convert departure time to 24-hour format
       const departureTime = convertTo24Hour(departure);
-      if (!departureTime) return "Time info unavailable";
+      if (!departureTime) return "Based on departure";
       
       // Extract duration
       const durationTime = extractDuration(duration);
@@ -655,7 +693,7 @@ For routes like Kolkata to Darjeeling, suggest flights to the nearest airport (l
       return `${formattedTime} ${dayStr}`;
     } catch (error) {
       console.error("Error calculating exact arrival time:", error);
-      return "Time calculation error";
+      return "Time varies";
     }
   };
 
@@ -758,10 +796,12 @@ For routes like Kolkata to Darjeeling, suggest flights to the nearest airport (l
             </div>
             <div className="flex flex-col items-center">
               <div className="text-xs text-gray-500 mb-1">Total Journey</div>
-              <div className="bg-indigo-100 px-3 py-1 rounded-lg text-xs text-indigo-700 flex items-center">
-                <FaMapMarkerAlt className="mr-1" />
-                <span>Arrives: {calculateExactArrivalTime(item.departure, item.duration)}</span>
-              </div>
+              {!item.departure.toLowerCase().includes('various') && (
+                <div className="bg-indigo-100 px-3 py-1 rounded-lg text-xs text-indigo-700 flex items-center">
+                  <FaMapMarkerAlt className="mr-1" />
+                  <span>Arrives: {calculateExactArrivalTime(item.departure, item.duration)}</span>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -783,140 +823,6 @@ For routes like Kolkata to Darjeeling, suggest flights to the nearest airport (l
   
   const tabCounts = getTabCounts();
 
-  // Render recommendation modal
-  const renderRecommendationModal = () => {
-    if (!showRecommendations) return null;
-    
-    const getIconForType = (type) => {
-      switch (type) {
-        case 'flight':
-          return <FaPlane className="text-blue-600" />;
-        case 'train':
-          return <FaTrain className="text-green-600" />;
-        case 'bus':
-          return <FaBus className="text-orange-600" />;
-        default:
-          return <FaInfoCircle className="text-gray-600" />;
-      }
-    };
-    
-    const getColorClassForType = (type) => {
-      switch (type) {
-        case 'flight':
-          return 'bg-blue-100';
-        case 'train':
-          return 'bg-green-100';
-        case 'bus':
-          return 'bg-orange-100';
-        default:
-          return 'bg-gray-100';
-      }
-    };
-    
-    const getTransportTypeName = (type) => {
-      switch (type) {
-        case 'flight':
-          return 'Flight';
-        case 'train':
-          return 'Train';
-        case 'bus':
-          return 'Bus';
-        default:
-          return 'Transport';
-      }
-    };
-    
-    return (
-      <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
-        <div className="bg-white rounded-xl shadow-lg max-w-2xl w-full max-h-[90vh] overflow-auto">
-          <div className="sticky top-0 bg-gradient-to-r from-blue-600 to-indigo-700 p-5 rounded-t-xl">
-            <div className="flex justify-between items-center">
-              <h2 className="font-bold text-xl text-white flex items-center">
-                <FaStar className="mr-2" /> Top 3 Recommended Options
-              </h2>
-              <button 
-                onClick={() => setShowRecommendations(false)}
-                className="text-white hover:bg-white hover:bg-opacity-20 p-2 rounded-full"
-              >
-                ✕
-              </button>
-            </div>
-            <p className="text-blue-100 text-sm mt-1">Based on duration, price, and comfort</p>
-          </div>
-          
-          <div className="p-5">
-            {topRecommendations.length === 0 ? (
-              <div className="text-center p-10">
-                <p className="text-gray-500">No recommendations available</p>
-              </div>
-            ) : (
-              <div>
-                {topRecommendations.map((item, index) => (
-                  <div key={index} className="mb-6 bg-white rounded-lg p-5 border border-gray-200 hover:shadow-md transition-all">
-                    <div className="flex items-center mb-3">
-                      <div className={`${getColorClassForType(item.type)} p-3 rounded-full mr-3`}>
-                        {getIconForType(item.type)}
-                      </div>
-                      <div className="flex-1">
-                        <div className="flex justify-between">
-                          <h3 className="font-bold text-lg text-gray-800">{item.name}</h3>
-                          <div className="bg-yellow-100 text-yellow-700 px-3 py-1 rounded-full flex items-center text-sm">
-                            <FaStar className="mr-1" /> Rank #{index + 1}
-                          </div>
-                        </div>
-                        <p className="text-sm text-gray-500 mt-1">{getTransportTypeName(item.type)} • {item.info}</p>
-                      </div>
-                    </div>
-                    
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-                      <div className="bg-gray-50 p-3 rounded-lg">
-                        <p className="text-xs text-gray-500 mb-1">DEPARTURE</p>
-                        <p className="font-medium">{item.departure}</p>
-                      </div>
-                      <div className="bg-gray-50 p-3 rounded-lg">
-                        <p className="text-xs text-gray-500 mb-1">ARRIVAL</p>
-                        <p className="font-medium">{item.arrival}</p>
-                      </div>
-                      <div className="bg-gray-50 p-3 rounded-lg">
-                        <p className="text-xs text-gray-500 mb-1">DURATION</p>
-                        <p className="font-medium">{item.duration}</p>
-                      </div>
-                      <div className="bg-gray-50 p-3 rounded-lg">
-                        <p className="text-xs text-gray-500 mb-1">PRICE</p>
-                        <p className="font-medium text-orange-600">{item.price}</p>
-                      </div>
-                    </div>
-                    
-                    <div className="mt-3 flex justify-between items-center">
-                      <div className="bg-indigo-100 px-3 py-1 rounded-lg text-xs text-indigo-700 flex items-center">
-                        <FaMapMarkerAlt className="mr-1" />
-                        <span>Arrives: {calculateExactArrivalTime(item.departure, item.duration)}</span>
-                      </div>
-                      <div className="text-sm text-gray-500">
-                        {index === 0 && "Best Option Overall"}
-                        {index === 1 && "Good Alternative"}
-                        {index === 2 && "Third Best Choice"}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-            
-            <div className="mt-4 flex justify-end">
-              <Button 
-                onClick={() => setShowRecommendations(false)}
-                className="bg-gray-200 hover:bg-gray-300 text-gray-800"
-              >
-                Close
-              </Button>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  };
-
   if (!trip?.userSelection?.source) {
     return (
       <div className="bg-orange-50 border border-orange-200 rounded-lg p-4 my-6">
@@ -935,7 +841,7 @@ For routes like Kolkata to Darjeeling, suggest flights to the nearest airport (l
           <h2 className="font-bold text-2xl text-gray-800">Transportation Options</h2>
         </div>
         
-        {transportData && (
+        {transportData && topRecommendations.length > 0 && (
           <Button 
             onClick={() => setShowRecommendations(true)} 
             className="bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 flex items-center gap-2 text-white shadow-md"
@@ -1116,10 +1022,16 @@ For routes like Kolkata to Darjeeling, suggest flights to the nearest airport (l
         </div>
       )}
       
-      {/* Recommendation Modal */}
-      {renderRecommendationModal()}
+      {/* Use the Top3Recommendations component */}
+      <Top3Recommendations 
+        isOpen={showRecommendations}
+        onClose={() => setShowRecommendations(false)}
+        recommendations={topRecommendations}
+        source={trip?.userSelection?.source?.label}
+        destination={trip?.userSelection?.location?.label}
+      />
     </div>
   );
 }
 
-export default TransportationOptions
+export default TransportationOptions;
