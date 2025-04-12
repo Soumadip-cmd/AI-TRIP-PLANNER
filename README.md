@@ -1,5 +1,5 @@
                   
-<h1 align="center" style="font-weight: bold;">Full-Stack Trip Planner Web App</h1>
+<h1 align="center" style="font-weight: bold;">Full-Stack Trip Planner Web App Developed by Sandipan and Soumadip</h1>
 
 <p align="center">
 <a href="#tech">Technologies |</a>
