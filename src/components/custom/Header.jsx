@@ -20,13 +20,14 @@ function Header() {
   const [openDialog, setOpenDialog] = useState(false);
 
   useEffect(() => {
-    console.log(user)
-  })
+    console.log("User data:", user);
+    console.log("Profile picture URL:", user?.picture);
+  }, [user]);
 
   const login = useGoogleLogin({
     onSuccess: (res) => GetUserProfile(res),
-    onError: (error) => console.log(error)
-  })
+    onError: (error) => console.log("Login error:", error)
+  });
 
   const GetUserProfile = (tokenInfo) => {
     axios.get(`https://www.googleapis.com/oauth2/v1/userinfo?access_token=${tokenInfo.access_token}`, {
@@ -35,7 +36,7 @@ function Header() {
         Accept: 'application/json',
       },
     }).then((resp) => {
-      console.log(resp);
+      console.log("Google profile data:", resp);
       localStorage.setItem('user', JSON.stringify(resp.data));
       setOpenDialog(false);
       window.location.reload();
@@ -44,6 +45,9 @@ function Header() {
     });
   }
 
+  // Get user initial for fallback avatar
+  const userInitial = user?.name ? user.name.charAt(0).toUpperCase() : 'U';
+
   return (
     <div className='shadow-sm flex justify-between items-center px-6'>
       <img src="/logo.svg" alt="Logo" />
@@ -51,25 +55,56 @@ function Header() {
         {user ?
           <div className='flex items-center gap-3'>
             <a href="/create-trip">
-            <Button variant="outline" className="rounded-full">+ Create Trip</Button>
+              <Button variant="outline" className="rounded-full">+ Create Trip</Button>
             </a>
             <a href="/my-trips">
-            <Button variant="outline" className="rounded-full">My Trips</Button>
+              <Button variant="outline" className="rounded-full">My Trips</Button>
             </a>
             <Popover>
               <PopoverTrigger>             
-                <img src={user?.picture} alt="" className='h-[35px] w-[35px] rounded-full' />
+                {user?.picture ? (
+                  <img 
+                    src={user.picture} 
+                    alt="Profile" 
+                    referrerPolicy="no-referrer"
+                    className='h-[35px] w-[35px] rounded-full' 
+                    onError={(e) => {
+                      console.error("Profile image failed to load");
+                      // Replace with colored circle containing user initial
+                      e.target.style.display = 'none';
+                      e.target.parentNode.innerHTML = `
+                        <div class="h-[35px] w-[35px] rounded-full bg-blue-500 flex items-center justify-center text-white font-bold">
+                          ${userInitial}
+                        </div>
+                      `;
+                    }}
+                  />
+                ) : (
+                  <div className='h-[35px] w-[35px] rounded-full bg-blue-500 flex items-center justify-center text-white font-bold'>
+                    {userInitial}
+                  </div>
+                )}
               </PopoverTrigger>
               <PopoverContent>
-                <h2 className='cursor-pointer' onClick={()=>{
-                  googleLogout();
-                  localStorage.clear();
-                  window.location.reload();
-                }}>Logout</h2>
+                <div className="py-2">
+                  <div className="px-2 pb-2 mb-2 border-b">
+                    <div className="font-medium">{user?.name}</div>
+                    <div className="text-sm text-gray-500">{user?.email}</div>
+                  </div>
+                  <div 
+                    className='px-2 py-1 text-red-500 hover:bg-gray-100 rounded cursor-pointer' 
+                    onClick={() => {
+                      googleLogout();
+                      localStorage.clear();
+                      window.location.reload();
+                    }}
+                  >
+                    Logout
+                  </div>
+                </div>
               </PopoverContent>
             </Popover>
-
-          </div> : <Button onClick={()=>setOpenDialog(true)}>Sign In</Button>}
+          </div> : <Button onClick={() => setOpenDialog(true)}>Sign In</Button>}
       </div>
 
       <Dialog open={openDialog}>
@@ -88,7 +123,6 @@ function Header() {
           </DialogHeader>
         </DialogContent>
       </Dialog>
-
     </div>
   )
 }
